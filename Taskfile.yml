@@ -1,0 +1,180 @@
+version: '3'
+
+vars:
+  BINARY_NAME: gift-buyer
+  BUILD_DIR: ./bin
+  GO_VERSION: 1.24
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  deps:
+    desc: Install Go dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  build:
+    desc: Build the gift-buyer binary
+    deps: [deps]
+    cmds:
+      - go build -o {{.BINARY_NAME}} {{.BUILD_DIR}}
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BINARY_NAME}}"
+
+  check-env:
+    desc: Check required environment variables
+    cmds:
+      - |
+        echo "Checking required environment variables..."
+        if [ -z "$TG_APP_ID" ]; then
+          echo "❌ TG_APP_ID is required"
+          exit 1
+        fi
+        if [ -z "$TG_API_HASH" ]; then
+          echo "❌ TG_API_HASH is required"
+          exit 1
+        fi
+        if [ -z "$TG_ADMIN" ]; then
+          echo "❌ TG_ADMIN is required"
+          exit 1
+        fi
+        echo "✅ Required environment variables are set"
+
+  check-session:
+    desc: Check if session string is set
+    cmds:
+      - |
+        if [ -z "$TG_SESSION" ]; then
+          echo "❌ TG_SESSION is not set. Please run 'task auth' first."
+          exit 1
+        fi
+        echo "✅ Session string is set"
+
+  auth:
+    desc: Authenticate with Telegram and obtain session key
+    deps: [build, check-env]
+    cmds:
+      - |
+        echo "🔐 Starting Telegram authentication..."
+        echo "📝 Please have your phone number and verification code ready"
+        echo "⚠️  Make sure to save the session string output to TG_SESSION environment variable"
+        echo ""
+        ./{{.BINARY_NAME}} -auth
+        echo ""
+        echo "✅ Authentication complete!"
+        echo "📋 Copy the session string from above and set it as TG_SESSION environment variable:"
+        echo "   export TG_SESSION=your_session_string"
+
+  run:
+    desc: Run the gift-buyer bot with configuration
+    deps: [build, check-env, check-session]
+    cmds:
+      - |
+        echo "🚀 Starting gift-buyer bot..."
+        echo "📊 Configuration:"
+        echo "   Admin: $TG_ADMIN"
+        echo "   App ID: $TG_APP_ID"
+        echo "   Poll Interval: ${POLL_INTERVAL:-1s}"
+        echo "   Session: $(echo $TG_SESSION | cut -c1-20)..."
+        echo ""
+        echo "🎁 Bot will monitor and auto-purchase limited gifts"
+        echo "⏹️  Press Ctrl+C to stop"
+        echo ""
+        ./{{.BINARY_NAME}}
+
+  dev:
+    desc: Run the bot in development mode with verbose logging
+    deps: [build, check-env, check-session]
+    env:
+      POLL_INTERVAL: 5s
+    cmds:
+      - |
+        echo "🔧 Starting gift-buyer bot in development mode..."
+        echo "📊 Development Configuration:"
+        echo "   Admin: $TG_ADMIN"
+        echo "   App ID: $TG_APP_ID"
+        echo "   Poll Interval: 5s (development)"
+        echo "   Session: $(echo $TG_SESSION | cut -c1-20)..."
+        echo ""
+        ./{{.BINARY_NAME}}
+
+  status:
+    desc: Check environment and build status
+    cmds:
+      - |
+        echo "📋 Gift-Buyer Status Check"
+        echo "========================="
+        echo ""
+        echo "🔧 Build Status:"
+        if [ -f "{{.BINARY_NAME}}" ]; then
+          echo "   ✅ Binary exists: {{.BINARY_NAME}}"
+          echo "   📅 Built: $(stat -c %y {{.BINARY_NAME}} 2>/dev/null || stat -f %Sm {{.BINARY_NAME}} 2>/dev/null || echo 'Unknown')"
+        else
+          echo "   ❌ Binary not found. Run 'task build' first."
+        fi
+        echo ""
+        echo "🌐 Environment Variables:"
+        echo "   TG_APP_ID: $(if [ -n "$TG_APP_ID" ]; then echo "✅ Set"; else echo "❌ Missing"; fi)"
+        echo "   TG_API_HASH: $(if [ -n "$TG_API_HASH" ]; then echo "✅ Set"; else echo "❌ Missing"; fi)"
+        echo "   TG_ADMIN: $(if [ -n "$TG_ADMIN" ]; then echo "✅ Set ($TG_ADMIN)"; else echo "❌ Missing"; fi)"
+        echo "   TG_SESSION: $(if [ -n "$TG_SESSION" ]; then echo "✅ Set ($(echo $TG_SESSION | cut -c1-20)...)"; else echo "❌ Missing"; fi)"
+        echo "   POLL_INTERVAL: ${POLL_INTERVAL:-1s (default)}"
+        echo ""
+        echo "🎯 Next Steps:"
+        if [ ! -f "{{.BINARY_NAME}}" ]; then
+          echo "   1. Run 'task build' to build the binary"
+        fi
+        if [ -z "$TG_APP_ID" ] || [ -z "$TG_API_HASH" ] || [ -z "$TG_ADMIN" ]; then
+          echo "   2. Set required environment variables (TG_APP_ID, TG_API_HASH, TG_ADMIN)"
+        fi
+        if [ -z "$TG_SESSION" ]; then
+          echo "   3. Run 'task auth' to authenticate and get session string"
+        fi
+        if [ -f "{{.BINARY_NAME}}" ] && [ -n "$TG_APP_ID" ] && [ -n "$TG_API_HASH" ] && [ -n "$TG_ADMIN" ] && [ -n "$TG_SESSION" ]; then
+          echo "   ✅ Ready to run! Use 'task run' to start the bot"
+        fi
+
+  install:
+    desc: Install gift-buyer to system PATH
+    deps: [build]
+    cmds:
+      - |
+        if command -v sudo >/dev/null 2>&1; then
+          sudo cp {{.BINARY_NAME}} /usr/local/bin/
+          echo "✅ gift-buyer installed to /usr/local/bin/"
+        else
+          echo "❌ sudo not available. Please manually copy {{.BINARY_NAME}} to a directory in your PATH"
+        fi
+
+  setup:
+    desc: Complete setup guide
+    cmds:
+      - |
+        echo "🎁 Gift-Buyer Setup Guide"
+        echo "========================="
+        echo ""
+        echo "1. 📋 First, set up your environment variables:"
+        echo "   export TG_APP_ID=your_app_id"
+        echo "   export TG_API_HASH=your_api_hash"
+        echo "   export TG_ADMIN=your_username"
+        echo ""
+        echo "2. 🔐 Run authentication to get session string:"
+        echo "   task auth"
+        echo ""
+        echo "3. 💾 Set the session string:"
+        echo "   export TG_SESSION=your_session_string"
+        echo ""
+        echo "4. 🚀 Run the bot:"
+        echo "   task run"
+        echo ""
+        echo "📖 For more details, see README.md"
+        echo ""
+        echo "🔍 To check your current status, run: task status" 
